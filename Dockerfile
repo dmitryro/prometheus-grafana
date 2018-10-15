@@ -62,6 +62,7 @@ RUN set -ex \
     && pip install pyasn1 \
     && pip install apache-airflow[crypto,celery,postgres,hive,jdbc,mysql]==$AIRFLOW_VERSION \
     && pip install 'celery[redis]>=4.1.1,<4.2.0' \
+    && pip install install prometheus-client \
     && apt-get purge --auto-remove -yqq $buildDeps \
     && apt-get autoremove -yqq --purge \
     && apt-get clean \
@@ -73,14 +74,30 @@ RUN set -ex \
         /usr/share/doc \
         /usr/share/doc-base
 
+ENV AIRFLOW_PROMETHEUS_LISTEN_ADDR=:9090
+ENV AIRFLOW_PROMETHEUS_DATABASE_BACKEND=postgres
+ENV AIRFLOW_PROMETHEUS_DATABASE_HOST=localhost
+ENV AIRFLOW_PROMETHEUS_DATABASE_PORT=5432
+ENV AIRFLOW_PROMETHEUS_DATABASE_USER=airflow
+ENV AIRFLOW_PROMETHEUS_DATABASE_PASSWORD=airflow
+ENV AIRFLOW_PROMETHEUS_DATABASE_NAME=airflow
+
+RUN mkdir /etc/prometheus
+COPY initdb.sh /initdb.sh
 COPY script/entrypoint.sh /entrypoint.sh
 COPY config/airflow.cfg ${AIRFLOW_HOME}/airflow.cfg
-
+COPY plugins ${AIRFLOW_HOME}/plugins
+COPY initdb.sql initdb.sql
+RUN mkdir /etc/prometheus
+COPY prometheus.yml /etc/prometheus/prometheus.yml
+RUN chmod +x /etc/prometheus/prometheus.yml
 RUN chown -R airflow: ${AIRFLOW_HOME}
-
-EXPOSE 8080 5555 8793
+RUN adduser --disabled-password --gecos '' grafana
+EXPOSE 8080 5555 8793 9000 9090 9093 3000
 
 USER airflow
 WORKDIR ${AIRFLOW_HOME}
+RUN chown -R airflow: /initdb.sh
+RUN bash /initdb.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["webserver"] # set default arg for entrypoint
